@@ -1,0 +1,238 @@
+---
+title: "R Notebook"
+output:
+  html_document: default
+  html_notebook: default
+---
+
+Load Library
+```{r setup, include=FALSE}
+library(tidyverse)
+library(lubridate)
+library(dplyr)
+library(readxl)
+
+# spatial and temporal data analysis packages
+library(gstat)
+library(sp)
+library(spacetime)
+#library(rgdal)
+library(rgeos)
+library(coda)
+library(spTimer)
+
+#visualization packages
+library(akima)
+```
+
+### Read Data
+```{r}
+oldw <- getOption("warn")
+options(warn = -1)
+
+dt <- read_excel("../Data/groundwater.xlsx")
+glimpse(dt)
+
+options(warn = oldw)
+```
+
+### Data Checking and Cleaning
+```{r}
+dt <- dt %>% filter(`Measurement Type`=='Depth') %>% select(Season, Year, Msmt_Date, Latitude, Longitude, WSEL, Basin_ID, Basin_Name)
+dim(dt)
+dt <- dt %>% mutate(Latitude = round(Latitude, 6), Longitude = round(Longitude,6))
+ndt <- dt %>% distinct(Season, Year, Latitude, Longitude, .keep_all = TRUE) %>% 
+        mutate(Month = month(Msmt_Date)) %>% 
+        dplyr::select(Year, Season, Month, Latitude,Longitude, Basin_Name,WSEL)
+ndt$place = paste(ndt$Longitude,ndt$Latitude,sep="_")
+dim(ndt)
+n_distinct(ndt$place) #13820 locations
+```
+
+```{r}
+sum(is.na(dt$Latitude)) #no missing values
+sum(is.na(dt$Longitude))#no missing values
+sum(is.na(dt$Basin_Name))
+sum(is.na(dt$Msmt_Date))#no missing values
+```
+
+### How often are the basin areas measured by sensors yearly?
+```{r}
+sites_df <- ndt %>% group_by(Basin_Name, Year) %>% 
+     summarise(num_of_measures = n(), num_of_locs = n_distinct(place)) 
+write.csv(sites_df,file = "../Data/basin_measurements.csv",na = "unknown",row.names = FALSE)
+sites_df 
+```
+
+Clean the data by year and Season to get the average WSEL since there are possibly several measurements on a specific location at a certain time point.
+```{r}
+dt_season <- ndt %>% group_by(place, Year, Season) %>% summarise(avg_WSEL = mean(WSEL))
+
+dt_target <- dt_season %>% left_join(ndt)
+```
+
+
+
+It seems the record time is not evenly distributed.
+
+## Apply Bayesian Spatio-Temporal Model
+The goal is to interpolate and forcast the WSEL values accounting for the spatial and temporal random effect in the model. The advantage of this model lies in the flexibility to apply bayesian method to fit the missing values and take both the spatial and temporal random effect into accounts to get robust estimates. 
+
+### Prepare Monthly Sample Data for Sacromento Valley 
+```{r}
+test = ndt %>% filter(Basin_Name=='SACRAMENTO VALLEY') 
+test
+```
+
+
+To apply the B.S.T Model in SpTimer package, we need to carefully remove the locations too close with each others, which is probably due to some computation issues. 
+```{r}
+cat("number of wells in Sacromento Valley:", n_distinct(test$place), '\n')
+loc_df <- as.matrix(unique(test[,c("Longitude","Latitude")]))
+fdm <- spT.geodist(loc_df[,1],loc_df[,2])
+diag(fdm)<-NA
+fdm<-cbind(c(fdm),1:dim(fdm)[[2]],sort(rep(1:dim(fdm)[[1]],dim(fdm)[[2]])))
+fdm<-fdm[!is.na(fdm[,1]),]
+tol <- 0.08
+fdmis<-fdm[fdm[,1] < tol,] #sites too close 
+site_Todelete = unique(c(fdmis[,2],fdmis[,3]))
+cat("number of well locations being too close with each other: ",length(site_Todelete),'\n')
+```
+
+```{r}
+loc_df = as.data.frame(loc_df)
+loc_df$site_id = 1:dim(loc_df)[1]
+
+nloc_df = loc_df %>% filter(!site_id %in% site_Todelete)
+ntest <- left_join(nloc_df, test) 
+```
+
+```{r}
+ntest %>% group_by(Year,Season) %>% summarise(cnt=n())
+```
+
+Prepare the expanded dataset with the missing values on the other months
+```{r}
+#N <- n_distinct(ntest$place) #335
+place_ls <- unique(ntest$place)
+sample_locs <- sample(place_ls,100,replace = FALSE)
+
+N <- length(sample_locs)
+Y <- n_distinct(ntest$Year) 
+all_data <- data.frame(matrix(NA, N*Y*2, 3))
+
+all_data[,1] <- as.character(rep(sample_locs, each = Y*2))
+all_data[,2] <- as.numeric(2011:2016, each = 2)
+all_data[,3] <- as.character(c("Spring","Fall"))
+colnames(all_data) <- c("place", "Year", "Season")
+
+nall_data <- left_join(all_data, ntest)
+nall_data$Latitude = sapply(nall_data[,"place"],function(x) as.numeric(strsplit(x, split='_')[[1]][1]))
+nall_data$Longitude = sapply(nall_data[,"place"],function(x) as.numeric(strsplit(x, split='_')[[1]][2]))
+```
+
+There are 85% of missing values in the data in terms of all measure locations and time points(month).
+```{r}
+dim(nall_data)
+sum(is.na(nall_data$WSEL))/dim(nall_data)[1] #85%
+head(nall_data)
+```
+
+The distribution of WSEL. We may consider to transform the variable to make it noraml to improve our modeling.
+```{r}
+hist(nall_data$WSEL)
+```
+
+
+### Choose the Gaussian Process method with the default prior
+```{r}
+nItr <- 1000  # number of MCMC samples for each model, used as 5000 in the paper
+nBurn <- 100  # number of burn-in from the MCMC samples, used as 1000 in the paper 
+
+gdwater.gp <- spT.Gibbs(formula= WSEL~ 1, data=nall_data, 
+                        model="GP", 
+                        ts <- spT.time(t.series = 2, 
+                                       segments = 6),
+                        coords= ~Longitude + Latitude, 
+                        nItr = nItr, nBurn = nBurn,
+              spatial.decay=spT.decay(distribution=Gamm(2,1),tuning=0.1))
+```
+
+```{r}
+print(gdwater.gp)
+summary(gdwater.gp)
+```
+
+Check the fitting performance
+```{r}
+spT.validation(nall_data$WSEL[!is.na(nall_data$WSEL)],gdwater.gp$fitted[,1][!is.na(nall_data$WSEL)])
+```
+
+Model Diagnostics
+```{r}
+plot(gdwater.gp)
+plot(gdwater.gp, residuals=TRUE)
+```
+
+We want to check the predictive power. We need to create the grids of location and time in a suitable format for training.
+```{r}
+set.seed(11)
+
+N <- n_distinct(ntest$place) 
+Y <- n_distinct(ntest$Year) 
+all_grids <- data.frame(matrix(NA, N*Y*2, 3))
+
+all_grids[,1] <- as.character(rep(unique(ntest$place), each = Y*2))
+all_grids[,2] <- as.numeric(2011:2016, each = 2)
+all_grids[,3] <- as.character(c("Spring","Fall"))
+colnames(all_grids) <- c("place", "Year", "Season")
+
+all_grids <- left_join(all_grids, ntest)
+all_grids$Latitude = sapply(all_grids[,"place"],function(x) as.numeric(strsplit(x, split='_')[[1]][1]))
+all_grids$Longitude = sapply(all_grids[,"place"],function(x) as.numeric(strsplit(x, split='_')[[1]][2]))
+```
+
+### Generate predictions 
+```{r}
+set.seed(11)
+pred.gp <- predict(gdwater.gp, newdata=all_grids, newcoords=~Longitude+Latitude)
+```
+
+
+### Gaussian Process model2 with better prior estimate
+We can see the acceptance rate improves
+```{r}
+set.seed(11)
+ts <- spT.time(t.series = 2, segments = 6)
+nItr <- 1000  # number of MCMC samples for each model, used as 5000 in the paper
+nBurn <- 100  # number of burn-in from the MCMC samples, used as 1000 in the paper 
+
+priors <- spT.priors(model = "GP", inv.var.prior = Gamm(2,1), beta.prior = Norm(72, 65)) # note that the 72 is the average WSEL from our test data
+
+gdwater.gp2 <- spT.Gibbs(formula= WSEL~ 1, data=nall_data, model="GP", time.data = ts,
+                      coords= ~Longitude + Latitude, priors = priors,
+                      nItr = nItr, nBurn = nBurn,
+                        spatial.decay=spT.decay(distribution=Gamm(2,1),tuning=0.1))
+```
+
+We can see the goodness of fit and predictive power increase comparing to last model.
+```{r}
+summary(gdwater.gp2)
+plot(gdwater.gp)
+plot(gdwater.gp, residuals=TRUE)
+```
+
+```{r}
+spT.validation(nall_data$WSEL[!is.na(nall_data$WSEL)],gdwater.gp2$fitted[,1][!is.na(nall_data$WSEL)])
+```
+
+```{r}
+set.seed(11)
+pred.gp2 <- predict(gdwater.gp2, newdata=all_grids, newcoords=~Longitude+Latitude)
+```
+
+
+### More work to be done
+- Test and choose better priors
+- Experiment with AR model
+- Implement the cross-validation training process for fitting the spatio-temporal data
