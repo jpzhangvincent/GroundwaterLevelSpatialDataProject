@@ -1,0 +1,122 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+# Load the packages we need 
+```{r}
+library(rgeos)
+library(rgdal)
+library(raster)
+library(gstat)
+library(tmap)
+library(sp)
+library(readxl)
+library(dplyr)
+```
+
+###### Step 1. Plotting the shapefiles
+```{r}
+setwd("E:/CWEE/Groundwater_Basins_shapefiles/Groundwater_Basins_shapefiles")
+
+# trim shapefile to only central valley
+ogrListLayers(dsn = getwd())
+GroundwaterBasins <- rgdal::readOGR(dsn = getwd(), layer = "i08_B118_CA_GroundwaterBasins")
+
+# how to find out what Basins we are interested
+# Use https://gis.water.ca.gov/app/boundaries/
+# Click the Bulletin 118 Groundwater Basins(2016)
+# Check out the Basin_IDs 
+# The basins ID in central valleys starting with 2,3 and 5
+study_basins <- GroundwaterBasins[grep("[2,3,5]-.*",GroundwaterBasins@data$Basin_ID),]
+plot(study_basins)
+```
+
+###### Step 2. Preparing Data
+```{r}
+setwd("E:/CWEE")
+
+# Read the files
+gw = read_excel("B118 CA DWR GW_Master.xlsx")
+site_code = unique(gw$Site_Code)
+
+# Subset only Depth measurement type
+gw_subset = gw[which(gw$`Measurement Type` == "Depth"),]
+
+#Subset the 2011 and 2012 spring data
+gw_subset$Season[gw_subset$Season!='Fall']='Spring'
+gw_subset = gw_subset[gw_subset$Season=='Spring',]
+gw_subset2011 = gw_subset[gw_subset$Year==2011,]
+gw_subset2012 = gw_subset[gw_subset$Year==2012,]
+gw_subset2011$lonlat = paste(gw_subset2011$Longitude,gw_subset2011$Latitude)
+gw_subset2011 = gw_subset2011[!duplicated(gw_subset2011$lonlat),]
+gw_subset2012$lonlat = paste(gw_subset2012$Longitude,gw_subset2012$Latitude)
+gw_subset2012 = gw_subset2012[!duplicated(gw_subset2012$lonlat),]
+pool = intersect(gw_subset2011$lonlat,gw_subset2012$lonlat)
+#19
+pool = intersect(gw_subset2011$Site_Code,gw_subset2012$Site_Code)
+#2184
+pool = intersect(gw_subset2011$Local_Well,gw_subset2012$Local_Well)
+#1740
+
+# Change the data frame to spatial data frame
+gw_subset = data.frame(gw_subset)
+coordinates(gw_subset) = ~Longitude + Latitude 
+proj4string(gw_subset) <- CRS('+init=epsg:4269')
+```
+
+###### Step 3. Select only the wells in central valley
+```{r}
+# Make projection of study basins the same as gw_subset
+study_basins <- spTransform(study_basins, gw_subset@proj4string)
+
+# Subset only the wells in study_basins
+# reference:http://gis.stackexchange.com/questions/63793/how-to-overlay-a-polygon-over-spatialpointsdataframe-and-preserving-the-spdf-dat
+test <- sp::over(gw_subset,study_basins)
+study_wells = gw_subset[!is.na(sp::over(gw_subset,as(study_basins, "SpatialPolygons"))),] ### this is the new excel files
+
+##Select the 2012 and 2011 spring data
+```
+
+###### Step 4. Prepare to create a idw model
+```{r}
+# Create a grid 
+grd <- as.data.frame(spsample(study_wells, "regular", n=100000))
+names(grd) <- c("Longitude", "Latitude")
+coordinates(grd) <- c("Longitude", "Latitude")
+gridded(grd)     <- TRUE  # Create SpatialPixel object
+fullgrid(grd)    <- TRUE  # Create SpatialGrid object
+
+# Test if our grd is good
+plot(grd, cex=1.5)
+points(study_wells , pch=1, col='red', cex=1)
+title("Interpolation Grid and Sample Points")
+
+# Add P's projection information to the empty grid
+proj4string(grd) <- proj4string(study_wells)
+
+# Interpolate the grid cells using a power value of 2 (idp=2.0)
+study_wells.idw <- gstat::idw(WSEL ~ 1, study_wells, newdata = grd, idp=2)
+r <- raster(study_wells.idw)
+
+# Extracting value from raster to many polygons
+# Use first basin as an example
+test_basin <- study_basins[1,]
+test_extract <- raster::extract(r, test_basin, normalizeWeights = TRUE, mall = TRUE)
+# NUMBER OF CELLS WITHIN POLYGON EXTRACT CELLS/ POLYGON
+cellFromPolygon(r,test_basin)
+
+# Plot our result
+plot(crop(r,test_basin))
+plot(test_basin, add = T)
+plot(study_pts, add = T)
+```
+
+###### Step 5. Plot idw model
+```{r}
+tm_shape(r) + 
+  tm_raster(n=10, palette = "RdBu", auto.palette.mapping = FALSE,
+            title="Predicted WSEL \n(in feet)") + 
+  tm_shape(study_wells) + tm_dots(size=0.01) +
+  tm_legend(legend.outside=TRUE)
+```
+
