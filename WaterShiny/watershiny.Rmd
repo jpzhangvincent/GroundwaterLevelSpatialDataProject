@@ -1,0 +1,132 @@
+---
+title: "California Water Challenge"
+runtime: shiny
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    vertical_layout: fill
+    social: menu
+    source_code: https://github.com/jpzhangvincent/GroundwaterLevelSpatialDataProject
+    theme: simplex
+
+---
+
+<!-- Learn more about flexdashboard at https://rstudio.github.io/flexdashboard -->
+
+
+```{r setup, include=FALSE}
+
+library(shiny)
+library(leaflet) # devtools::install_github('rstudio/leaflet')
+library(highcharter) # devtools::install_github('jbkunst/highcharter')
+library(plotly) # devtools::install_github('ropensci/plotly')
+library(ggplot2) # devtools::install_github('hadley/ggplot2')
+library(sp)
+library(dplyr)
+library(flexdashboard) # devtools::install_github('rstudio/flexdashboard')
+library(rgeos)
+library(mapproj)
+library(maptools)
+library(readr)
+library(ggthemes)
+
+
+# Import Data
+load('Subbasin_Year_TotalWaterUsage.rda')
+subbasin = as.character(unique(water$name))
+```
+
+Sidebar {.sidebar}
+======================================================================
+
+```{r}
+
+# Define inputs
+selectInput('SubbasinName', label = h4('Select a subbasin'), choices = subbasin, selected = 'CHOWCHILLA')
+
+sliderInput('year', label = h4('Prediction Year'), min = 2011, max = 2016, value = 2011, 
+            step = 1)
+
+radioButtons("WaterRadio", label = h4("Prediction Season"),
+                                 choices = list("Spring" = 1, "Fall" = 2),selected = 1)
+
+```
+
+Use the __Underground Water and Crop__ tab to get information about water surface elevation level(WSEL) and crop water usage of subbasins in San Joaquin Valley. We predicted the WSEL through Spatio-Temporal Bayesian Model. 
+
+To learn more about the project, click the __About__ tab.
+
+Application author:All come from UC Davis
+
+Explore metrosUnderground Water and Crop
+======================================================================
+
+Row
+-----------------------------------------------------------------------
+### Predicted WSEL
+
+```{r}
+
+
+```
+
+### WSEL Time Series
+```{r}
+
+```
+
+Row 
+-----------------------------------------------------------------------
+### Crop Water Usage
+
+```{r}
+
+
+```
+
+### Crop Water Usage per Acre
+```{r}
+
+```
+
+About
+============================================================================
+We use the Spatio-Temporal Bayesian Model and [spTimer](https://cran.r-project.org/package=spTimer) package in R to predict and interpolate the WSEL values of San Joaquin Valley. This method could be applied to large point-referenced space-time data and predict the value given time and location. [spTimer: Spatio-Temporal Bayesian Modeling Using R(2015)](https://www.jstatsoft.org/article/view/v063i15/v63i15.pdf) At first, we have 3000+ wells data of WESL in San Joaquin Valley from 2011 to 2016, Spring and Fall 2 seasons. However, not every well has 12 meaturements and we need to predict the values for missing data. What is more, we need to interpolate and get the WSEL values for more locations.
+
+Underground Water Group Member: Jiaping(Vincent) Zhang, Xinyi Hou, Danyang Chen, Wenyu Li,Yuchen Li
+
+Crop Group:Yanling(Alice) Li, Kai Jin, Ying-Chen Chow, Miao Wang, Robert Fong
+
+All group members come from University of California, Davis.
+
+Thanks for thr help of [CWEE of UC Davis](http://cwee.ucdavis.edu/). 
+ 
+
+<style>
+
+#sidebar.section.sidebar {
+
+  background-color: white; 
+  font-family: "Open Sans", "Helvetica Neue", Helvetica, Arial, sans-serif !important;
+
+}
+
+.js-irs-0 .irs-bar {
+border-top-color: #d01010;
+border-bottom-color: #d01010;
+} 
+
+.js-irs-0 .irs-bar-edge {
+border-color: #d01010;
+}
+
+.js-irs-0 .irs-single, .js-irs-0 .irs-bar-edge, .js-irs-0 .irs-bar {
+background: #a00;
+}
+
+</style>
+
+
+
+
+
