@@ -32,8 +32,22 @@ library(ggthemes)
 
 
 # Import Data
-load('Subbasin_Year_TotalWaterUsage.rda')
-subbasin = as.character(unique(water$name))
+load('wateruse.rda')
+load('overall_wateruse.rda')
+subbasin = as.character(unique(wateruse$Subbasin_N))
+water_year = unique(wateruse$year)
+
+subbasin_wateruse = reactive({
+  subname = input$SubbasinName
+  WaterUsage=wateruse[which(wateruse$Subbasin_N==subname),]$WaterUsage
+  acres=as.numeric(wateruse[which(wateruse$Subbasin_N==subname),]$acers)
+  year = unique(wateruse$year)
+  subwater = data.frame(year,WaterUsage,acres)
+  return(subwater)
+})
+  
+  
+
 ```
 
 Sidebar {.sidebar}
@@ -63,29 +77,75 @@ Explore metrosUnderground Water and Crop
 
 Row
 -----------------------------------------------------------------------
-### Predicted WSEL
+### San Joaquin Valley and Subbasins
 
 ```{r}
 
 
 ```
+
+### Predicted WSEL
+```{r}
+
+```
+
+
+Row
+-----------------------------------------------------------------------
 
 ### WSEL Time Series
 ```{r}
 
 ```
 
-Row 
------------------------------------------------------------------------
 ### Crop Water Usage
 
 ```{r}
+output$subwaterplot <- renderPlotly({
+  #Get the data
+  data1 <- subbasin_wateruse() 
+  subname = input$SubbasinName
+  
+  #Plot
+  p <- ggplot() +
+    # blue plot
+    geom_point(data=overall_wateruse, aes(x=year, y=WaterUsage/mean(WaterUsage),color="All Basin"),size = I(2)) + theme_bw()+ theme(legend.position = "bottom")+
+    geom_smooth(data=overall_wateruse, aes(x=year, y=WaterUsage/mean(WaterUsage)), fill="red",
+                colour="red", size=.5)+
+    # red plot
+    geom_point(data=data1, aes(x=year, y=WaterUsage/mean(WaterUsage),color=subname),size = I(2)) +
+    geom_smooth(data=data1, aes(x=year, y=WaterUsage/mean(WaterUsage)), fill="blue",
+                colour="blue", size=.5,span=1,alpha=I(1/10)) +
+    ggtitle(paste("Water Use for",subname))
+    ggplotly(p)
+})  
 
+plotlyOutput('subwaterplot')
 
 ```
 
 ### Crop Water Usage per Acre
 ```{r}
+output$wateracreplot <- renderPlotly({
+  #Get the data
+  data2 <- subbasin_wateruse() 
+  subname = input$SubbasinName
+  
+  #Plot
+  p2 <- ggplot()+
+    # blue plot
+    geom_point(data=overall_wateruse, aes(x=year, y=WaterUsage/acers,color="All Basin"),size =   I(2)) + theme_bw()+ ylab('WaterUsage/Acre')+theme(legend.position = "bottom")+
+    geom_smooth(data=overall_wateruse, aes(x=year, y=WaterUsage/acers), fill="red",
+                colour="red", size=.5) +
+    # red plot
+    geom_point(data=data2, aes(x=year, y=WaterUsage/acres,color=subname),size = I(2)) +
+    geom_smooth(data=data2, aes(x=year, y=WaterUsage/acres), fill="blue",
+                colour="blue", size=.5,span=1,alpha=I(1/10)) +
+    ggtitle(paste("Water per acres",subname))
+  ggplotly(p2)
+})  
+
+plotlyOutput('wateracreplot')
 
 ```
 
