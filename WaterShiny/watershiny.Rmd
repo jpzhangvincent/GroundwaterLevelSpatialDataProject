@@ -93,12 +93,13 @@ Row
 
 ```
 
-### Predicted WSEL
+### Interpolated WSEL
 ```{r}
 output$contourSB <- renderPlot({
    subname = input$SubbasinName
    Year = input$year
-   plot_contour()
+   Season = input$WaterRadio
+   plot_contour(Season,Year,subname)
 })
   
 plotOutput("contourSB")

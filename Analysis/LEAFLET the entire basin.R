@@ -1,7 +1,5 @@
 library(rgdal)
-library(geojsonio)
-library(leaflet)
-library(leafletR)
+
 #setwd("~/Box Sync/2016Fall (jenny91515@gmail.com)/Intern/Groundwater/Groundwater_Basins_shapefiles")
 ogrListLayers(dsn = "Data/Groundwater_Basins_shapefiles")
 GroundwaterBasins <- rgdal::readOGR(dsn = "Data/Groundwater_Basins_shapefiles", layer = "i08_B118_CA_GroundwaterBasins")

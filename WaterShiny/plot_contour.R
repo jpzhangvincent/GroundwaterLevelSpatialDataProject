@@ -34,10 +34,15 @@ data_list = list(s2011,f2011,s2012,f2012,s2013,f2013,s2014,f2014,s2015,f2015,s20
 names = unique(s2011$name)
 names = as.character(names)
 
-plot_contour = function(season.year, sub_basin){
-  data_plot = data_list[[season.year]]
-  data_plot = data_plot[data_plot[,5] == names[sub_basin],]
+plot_contour = function(season, year, sub_basin){
+  year.index = year - 2010
+  if(season==1)
+     season.year.index = 2 * year.index -1
+  else
+     season.year.index = 2 * year.index
+  data_plot = data_list[[season.year.index]]
+  data_plot = data_plot[data_plot[,5] == sub_basin,]
   data_plot_new = data.frame(data_plot[,4],data_plot[,3],data_plot[,2])
-  surfplot(val = data_plot_new, main = "Contour ")
+  surfplot(val = data_plot_new)
 }
 
