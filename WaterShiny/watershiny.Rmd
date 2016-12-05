@@ -15,7 +15,7 @@ output:
 
 
 ```{r setup, include=FALSE}
-
+library(rgdal)
 library(shiny)
 library(leaflet) # devtools::install_github('rstudio/leaflet')
 library(highcharter) # devtools::install_github('jbkunst/highcharter')
@@ -27,13 +27,22 @@ library(flexdashboard) # devtools::install_github('rstudio/flexdashboard')
 library(rgeos)
 library(mapproj)
 library(maptools)
+library(geojsonio)
+library(leaflet)
+library(leafletR)
 library(readr)
 library(ggthemes)
 
-
+source("plot_contour.R")
+source("plot_timeseries.R")
 # Import Data
-load('wateruse.rda')
-load('overall_wateruse.rda')
+# groudwater
+load("Data/pred.rda")
+coords <- readRDS("Data/coords.rds")
+
+# crops
+load('Data/wateruse.rda')
+load('Data/overall_wateruse.rda')
 subbasin = as.character(unique(wateruse$Subbasin_N))
 water_year = unique(wateruse$year)
 
@@ -66,13 +75,13 @@ radioButtons("WaterRadio", label = h4("Prediction Season"),
 
 ```
 
-Use the __Underground Water and Crop__ tab to get information about water surface elevation level(WSEL) and crop water usage of subbasins in San Joaquin Valley. We predicted the WSEL through Spatio-Temporal Bayesian Model. 
+Use the __Ground Water and Crop__ tab to get information about water surface elevation level(WSEL) and crop water usage of subbasins in San Joaquin Valley. We predicted the WSEL through Spatio-Temporal Bayesian Model. 
 
 To learn more about the project, click the __About__ tab.
 
 Application author:All come from UC Davis
 
-Explore metrosUnderground Water and Crop
+Explore Ground Water Distribution
 ======================================================================
 
 Row
@@ -86,7 +95,13 @@ Row
 
 ### Predicted WSEL
 ```{r}
-
+output$contourSB <- renderPlot({
+   subname = input$SubbasinName
+   Year = input$year
+   plot_contour()
+})
+  
+plotOutput("contourSB")
 ```
 
 
@@ -95,8 +110,48 @@ Row
 
 ### WSEL Time Series
 ```{r}
+output$dygraphTS <- renderDygraph({
+  subname = input$SubbasinName
+  plot_timeseries(subname, coords, pred)
+})
+
+dygraphOutput("dygraphTS")
+```
+
+
+Compare Water Usage over time
+============================================================================
+
+Row
+----------------------------------------------------------------------------
+
+### Crop Water Usage per Acre
+```{r}
+output$wateracreplot <- renderPlotly({
+  #Get the data
+  data2 <- subbasin_wateruse() 
+  subname = input$SubbasinName
+  
+  #Plot
+  p2 <- ggplot()+
+    # blue plot
+    geom_point(data=overall_wateruse, aes(x=year, y=WaterUsage/acers,color="All Basin"),size =   I(2)) + theme_bw()+ ylab('WaterUsage/Acre')+theme(legend.position = "bottom")+
+    geom_smooth(data=overall_wateruse, aes(x=year, y=WaterUsage/acers), fill="red",
+                colour="red", size=.5) +
+    # red plot
+    geom_point(data=data2, aes(x=year, y=WaterUsage/acres,color=subname),size = I(2)) +
+    geom_smooth(data=data2, aes(x=year, y=WaterUsage/acres), fill="blue",
+                colour="blue", size=.5,span=1,alpha=I(1/10)) +
+    ggtitle(paste("Water per acres",subname))
+  ggplotly(p2)
+})  
+
+plotlyOutput('wateracreplot')
 
 ```
+
+Row
+----------------------------------------------------------------------------
 
 ### Crop Water Usage
 
@@ -124,34 +179,9 @@ plotlyOutput('subwaterplot')
 
 ```
 
-### Crop Water Usage per Acre
-```{r}
-output$wateracreplot <- renderPlotly({
-  #Get the data
-  data2 <- subbasin_wateruse() 
-  subname = input$SubbasinName
-  
-  #Plot
-  p2 <- ggplot()+
-    # blue plot
-    geom_point(data=overall_wateruse, aes(x=year, y=WaterUsage/acers,color="All Basin"),size =   I(2)) + theme_bw()+ ylab('WaterUsage/Acre')+theme(legend.position = "bottom")+
-    geom_smooth(data=overall_wateruse, aes(x=year, y=WaterUsage/acers), fill="red",
-                colour="red", size=.5) +
-    # red plot
-    geom_point(data=data2, aes(x=year, y=WaterUsage/acres,color=subname),size = I(2)) +
-    geom_smooth(data=data2, aes(x=year, y=WaterUsage/acres), fill="blue",
-                colour="blue", size=.5,span=1,alpha=I(1/10)) +
-    ggtitle(paste("Water per acres",subname))
-  ggplotly(p2)
-})  
-
-plotlyOutput('wateracreplot')
-
-```
-
 About
 ============================================================================
-We use the Spatio-Temporal Bayesian Model and [spTimer](https://cran.r-project.org/package=spTimer) package in R to predict and interpolate the WSEL values of San Joaquin Valley. This method could be applied to large point-referenced space-time data and predict the value given time and location. [spTimer: Spatio-Temporal Bayesian Modeling Using R(2015)](https://www.jstatsoft.org/article/view/v063i15/v63i15.pdf) At first, we have 3000+ wells data of WESL in San Joaquin Valley from 2011 to 2016, Spring and Fall 2 seasons. However, not every well has 12 meaturements and we need to predict the values for missing data. What is more, we need to interpolate and get the WSEL values for more locations.
+We use the Spatio-Temporal Bayesian Model and [spTimer](https://cran.r-project.org/package=spTimer) package in R to predict and interpolate the WSEL values of San Joaquin Valley. This method could be applied to large point-referenced space-time data and predict the value given time and location. [spTimer: Spatio-Temporal Bayesian Modeling Using R(2015)](https://www.jstatsoft.org/article/view/v063i15/v63i15.pdf) At first, we have 3000+ wells data of WESL in San Joaquin Valley from 2011 to 2016, Spring and Fall 2 seasons. However, not every well has 12 meaturements and we need to predict the values for missing data. Furthermore, we interpolate the WSEL values for more locations to make contour plots.
 
 Underground Water Group Member: Jiaping(Vincent) Zhang, Xinyi Hou, Danyang Chen, Wenyu Li,Yuchen Li
 
