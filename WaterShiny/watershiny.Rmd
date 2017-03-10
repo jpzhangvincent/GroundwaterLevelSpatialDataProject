@@ -81,17 +81,11 @@ To learn more about the project, click the __About__ tab.
 
 Application author:All come from UC Davis
 
-Explore Ground Water Distribution
+Ground Water and Crop
 ======================================================================
 
 Row
------------------------------------------------------------------------
-### San Joaquin Valley and Subbasins
-
-```{r}
-
-
-```
+----------------------------------------------------------------------
 
 ### Interpolated WSEL
 ```{r}
@@ -106,9 +100,6 @@ plotOutput("contourSB")
 ```
 
 
-Row
------------------------------------------------------------------------
-
 ### WSEL Time Series
 ```{r}
 output$dygraphTS <- renderDygraph({
@@ -118,10 +109,6 @@ output$dygraphTS <- renderDygraph({
 
 dygraphOutput("dygraphTS")
 ```
-
-
-Compare Water Usage over time
-============================================================================
 
 Row
 ----------------------------------------------------------------------------
@@ -150,9 +137,6 @@ output$wateracreplot <- renderPlotly({
 plotlyOutput('wateracreplot')
 
 ```
-
-Row
-----------------------------------------------------------------------------
 
 ### Crop Water Usage
 
